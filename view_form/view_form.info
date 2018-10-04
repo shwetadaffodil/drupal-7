@@ -1,0 +1,16 @@
+name = View Form
+description = Render custom fields in views api
+version = "7.x-1.0"
+core = 7.x
+
+files[] = view_form.module
+files[] = views/view_form.views.inc
+files[] = views/view_form_handler_filter_filterbyuser_select.inc
+files[] = views/view_form_handler_filter_filterby_reportinguser.inc
+files[] = views/view_form_field_handler_dispatch.inc
+files[] = views/View_form_field_handler_reassign.inc
+
+
+version = "7.x-1.0"
+core = "7.x"
+project = "viewsform"

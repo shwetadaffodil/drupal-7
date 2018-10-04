@@ -1,0 +1,133 @@
+<?php
+/**
+ * @file view_exposed_filters.module
+ * Provides a Views exposed filter which makes other filters depend on values
+ * selected in this custom filter for their visiblity and processing.
+ */
+
+/**
+ * Implements hook_views_api().
+ */
+function view_exposed_filters_views_api() {
+    return array(
+        'api' => 3,
+    );
+}
+
+/**
+ * Implement hook_form_alter.
+ */
+function view_exposed_filters_form_alter(&$form, &$form_state, $form_id) {
+    if($form_id == 'views_exposed_form') {        
+        //Set checkbox from views edit screen.
+        $set_controller_filter = $form_state['view']->display['page']->display_options['view_exposed_filters'];
+        
+        if($set_controller_filter) {
+            
+            $fields = $form_state['view']->display_handler->get_handlers('field');
+            $option_fields = get_field_options($fields);
+            
+            //Selector to add fields at runtime.
+            $form['select_fields'] = array(
+                '#type' => 'select',
+                '#title' => 'Select fields to Display',
+                '#options' => $option_fields,
+                '#default_value' => 'title',
+                '#multiple' => TRUE,
+            );
+            
+            $filters = $form_state['view']->display_handler->get_handlers('filter');
+            
+             foreach($filters as $id => $field_filter) {
+                if(isset($field_filter->definition['field_options']) && !empty($field_filter->definition['field_options'])) {
+                    $form[$id]['#options'] = $field_filter->definition['field_options'];                  
+                  }    
+             }
+            
+            
+            $options = get_filter_options($filters);
+            
+            $form['controller_filter'] = array(
+              '#type' => 'select',
+              '#title' => 'Select exposed filters',
+              '#options' => $options,
+              '#multiple' => TRUE,
+            );
+            
+            $form['#info']['controller_filter'] = array(
+                'value' => 'controller_filter', 
+              );
+            $form['#info']['select_fields'] = array(
+                'value' => 'select_fields', 
+              );
+            $new_form_info = array(
+               'filter-controller_filter' => $form['#info']['controller_filter'],           
+            );
+            $form['#info'] = array_merge($new_form_info, array_diff_assoc($form['#info'], $new_form_info));
+              
+            $form_state['dependency_info'] = $options;
+            $form['#after_build'] = array('view_exposed_filters_form_after_build');            
+        }        
+    }
+    return $form;
+}
+
+function view_exposed_filters_form_after_build($form, &$form_state) {
+    foreach($form_state['dependency_info'] as $key => $value) {        
+        $form[$key]['#process'] = 'ctools_dependent_process';
+        $form[$key]['#dependency'] = array('edit-controller-filter' => array($key));
+        $form['#attached']['js'][] = drupal_get_path('module', 'view_exposed_filters') . '/js/multi_select_dependency.js';
+        $form['#attached']['css'][] = drupal_get_path('module', 'view_exposed_filters') . '/css/multi_select_dependency.css';
+    }
+    
+    return $form;
+}
+
+/**
+ * Get all fields selected to display in View.
+ */
+function get_field_options($fields) {
+    $field_labels = array();
+    foreach ($fields as $field_id => $handler) {
+        $label = $handler->options['label'];
+        $field_labels[$field_id] = !empty($label) ? $label : $field_id; 
+    }
+    return $field_labels;
+}
+
+/**
+ * Get all filters added in any view.
+ */
+function get_filter_options($filters) {
+    $filters_dependent  = array();
+    foreach ($filters as $filter_id => $handler) {
+      // Skip non-exposed filters.
+      if (!$handler->is_exposed()) {
+        continue;
+      }
+      $label = $handler->ui_name(TRUE);
+      $filters_dependent[$filter_id] = $label;
+    }
+    return $filters_dependent;
+}
+/**
+ * Alter the views query to display only fields as selected by user dynamically.
+ */
+function view_exposed_filters_views_query_alter(&$view, $query) {
+    
+    $set_controller_filter = $view->display['page']->display_options['view_exposed_filters'];
+        
+    if($set_controller_filter) {
+        $fields_exposed = array_keys($view->exposed_raw_input['select_fields']);
+        $fields_exposed = !empty($fields_exposed) ? $fields_exposed : array('title', 'field_country_dc_ref');
+        
+        if(!empty($fields_exposed)) {
+            $existing_fields = array_keys($view->field);
+            $fields_to_remove = array_diff($existing_fields, $fields_exposed);
+            foreach ($fields_to_remove as $field_name) {
+                unset($view->field[$field_name]);            
+                unset($view->display_handler->handlers['field'][$field_name]);  
+            }
+        }
+    }
+}

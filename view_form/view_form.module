@@ -1,0 +1,274 @@
+<?php
+ /**
+  * @file
+  * Implements hook_views_api().
+  */
+function view_form_views_api() 
+{
+    return array(
+    'api' => 3,
+    'path' => drupal_get_path('module', 'view_form') . '/views',
+    );
+}
+
+/**
+ * Remove Save button if view form result is empty.
+ */
+function view_form_form_alter(&$form, &$form_state, $form_id) 
+{
+    if ($form_id == "views_form_company_manager_dashboard_page") {
+        if (empty($form['#substitutions']['#value'])) {
+            unset($form['actions']);
+        }
+    }
+    if ($form_id == "views_form_company_manager_dashboard_page_4") {
+        unset($form['actions']);
+    }
+    if ($form_id == "views_form_jobs_status_page") {
+        if (empty($form['#substitutions']['#value'])) {
+            drupal_add_js('jQuery(document).ready(function () { jQuery(".page-jobs-status #views-form-jobs-status-page #edit-submit--2")..hide(); });', 'inline');
+        }
+    }
+    if ($form_id == "views_form_translate_jobs_status_page") {
+        if (empty($form['#substitutions']['#value'])) {
+            drupal_add_js('jQuery(document).ready(function () { jQuery(".page-translate-jobs-status #views-form-translate-jobs-status-page #edit-submit--2").hide(); });', 'inline');
+        }
+    }
+    if ($form_id == "views_form_jobs_status_page") {
+        if (empty($form['#substitutions']['#value'])) {
+            drupal_add_js('jQuery(document).ready(function () { jQuery(".page-jobs-status #views-form-jobs-status-page #edit-submit--2").hide(); });', 'inline');
+        }
+    }
+}
+
+/**
+ * Get total videos.
+ */
+function get_total_videos($name, $status = null) 
+{
+    // Total jobs assignment.
+    $user = user_load_by_name($name);
+
+    $query  = db_select('field_data_field_company_subuser_refernce', 'cs');
+    $query->fields('cs', array('entity_id'));
+    $query->join('field_data_field_vm_status', 'vm', 'vm.entity_id = cs.entity_id');
+    if ($status != null) {
+        $query->where('vm.field_vm_status_tid = :status', array(':status' => $status));
+    }
+    $query->where('cs.field_company_subuser_refernce_target_id = :uid', array(':uid' => $user->uid));
+    $lstig = $query->execute()->fetchAll();
+
+    if (!empty($lstig)) {
+        return count($lstig);
+    }
+    else {
+        return false;
+    }
+}
+/**
+ * Job Status.
+ */
+function videos_rejected_for_company($status) 
+{
+    global $user;
+
+    $query = db_select('field_data_field_job_assigned_company', 'c');
+    $query->fields('c', array('entity_id'));
+    $query->join('field_data_field_parent_node_reference', 'p', 'p.field_parent_node_reference_target_id = c.entity_id');
+    $query->join('field_data_field_vm_status', 'vm', 'vm.entity_id = p.entity_id');
+    $query->where('vm.field_vm_status_tid = :status', array(':status' => $status));
+    $query->where('c.field_job_assigned_company_target_id = :uid', array(':uid' => $user->uid));
+
+    $result = $query->execute()->fetchAll();
+
+    if (!empty($result)) {
+        return count($result);
+    }
+    else {
+        return false;
+    }
+}
+
+/**
+ * Job status.
+ */
+function jobs_completed_by_company() 
+{
+    global $user;
+    $jobs_completed = array();
+    $query = db_select('field_data_field_job_assigned_company', 'c');
+    $query->fields('c', array('entity_id'));
+    $query->where('c.field_job_assigned_company_target_id = :uid', array(':uid' => $user->uid));
+    $result = $query->execute()->fetchAll();
+    foreach ($result as $res) {
+        $videoquery = db_select('field_data_field_parent_node_reference', 'p');
+        $videoquery->fields('p', array('entity_id'));
+        $videoquery->join('field_data_field_vm_status', 'vm', 'vm.entity_id = p.entity_id');
+        $videoquery->fields('vm', array('field_vm_status_tid'));
+        $videoquery->where('p.field_parent_node_reference_target_id = :target', array(':target' => $res->entity_id));
+        $jobs = $videoquery->execute()->fetchAll();
+
+        $flag = 0;
+        foreach ($jobs as $video) {
+            if ($video->field_vm_status_tid != 15) {
+                $flag = 1;
+            }
+        }
+        if ($flag == 0) {
+            $jobs_completed[] = $res->entity_id;
+        }
+    }
+    if (!empty($jobs_completed)) {
+        return count($jobs_completed);
+    }
+    else {
+        return false;
+    }
+}
+
+/**
+ * Job status.
+ */
+function jobs_to_do_by_company($status) 
+{
+
+    global $user;
+    $subquery = db_select('field_data_field_vm_status', 's');
+    $subquery->fields('s', array('entity_id'));
+    $subquery->where('s.field_vm_status_tid = :status', array(':status' => $status));
+
+    $query = db_select('field_data_field_job_assigned_company', 'c');
+    $query->fields('c', array('entity_id'));
+    $query->join('field_data_field_parent_node_reference', 'p', 'p.field_parent_node_reference_target_id = c.entity_id');
+    $query->where('c.field_job_assigned_company_target_id = :uid', array(':uid' => $user->uid));
+    $query->condition('p.entity_id', $subquery, 'IN');
+    $query->distinct();
+
+    $result = $query->execute()->fetchAll();
+
+    if (!empty($result)) {
+        return count($result);
+    }
+    else {
+        return false;
+    }
+
+}
+
+/**
+ * Get total videos for dm admin report tab.
+ */
+function get_total_skip_videos_for_dmadmin($name, $job_type, $video_status) 
+{
+    $user = user_load_by_name($name);
+
+    $query = "SELECT fdfjac.entity_id 
+    FROM field_data_field_job_assigned_company AS fdfjac
+    JOIN field_data_field_job_type AS fdfjt ON fdfjt.entity_id = fdfjac.entity_id
+    JOIN field_data_field_parent_node_reference  AS fdfpnr ON fdfpnr.field_parent_node_reference_target_id = fdfjt.entity_id
+    JOIN field_data_field_vm_status AS fdfvs ON fdfvs.entity_id = fdfpnr.entity_id
+    WHERE fdfjac.field_job_assigned_company_target_id = $user->uid"
+      . " AND fdfjt.field_job_type_tid = $job_type"
+      . " AND fdfvs.field_vm_status_tid = $video_status";
+    $get_all = db_query($query);
+    $output = $get_all->fetchAll();
+
+    if (!empty($output)) {
+        return count($output);
+    }
+    else {
+        return false;
+    }
+}
+
+/**
+ * Get job submitted to dm company.
+ */
+function get_total_job_submitted_for_dmadmin($name, $job_type) 
+{
+    $user = user_load_by_name($name);
+
+    $query = "SELECT fdfjac.entity_id 
+    FROM field_data_field_job_assigned_company AS fdfjac
+    JOIN field_data_field_job_type AS fdfjt ON fdfjt.entity_id = fdfjac.entity_id
+    WHERE fdfjac.field_job_assigned_company_target_id = $user->uid"
+      . " AND fdfjt.field_job_type_tid = $job_type";
+    $get_all = db_query($query);
+    $output = $get_all->fetchAll();
+
+    if (!empty($output)) {
+        return count($output);
+    }
+    else {
+        return false;
+    }
+}
+
+/**
+ * Get total assigned videos of company for dm admin report tab.
+ */
+function get_total_assigned_videos_of_company($name, $job_type) 
+{
+    $user = user_load_by_name($name);
+
+    $query = "SELECT fdfjac.entity_id 
+    FROM field_data_field_job_assigned_company AS fdfjac
+    JOIN field_data_field_job_type AS fdfjt ON fdfjt.entity_id = fdfjac.entity_id
+    JOIN field_data_field_parent_node_reference  AS fdfpnr ON fdfpnr.field_parent_node_reference_target_id = fdfjt.entity_id
+    WHERE fdfjac.field_job_assigned_company_target_id = $user->uid"
+      . " AND fdfjt.field_job_type_tid = $job_type";
+    $get_all = db_query($query);
+    $output = $get_all->fetchAll();
+
+    if (!empty($output)) {
+        return count($output);
+    }
+    else {
+        return false;
+    }
+}
+
+/**
+ * Get subusers of manager.
+ */
+function select_company_users() 
+{
+    global $user;
+    $result = array();
+    $query  = db_select('users', 'u');
+    $query->fields('u', array('uid', 'name'));
+    $query->join('field_data_endpoints', 'fde', 'u.uid = fde.endpoints_entity_id');
+    $query->where('fde.bundle = :subuser', array(':subuser' => 'subuser'));
+    $query->where('fde.endpoints_entity_type = :user', array(':user' => 'user'));
+    $query->where('fde.endpoints_r_index = :index', array(':index' => 0));
+    $query->join('field_data_endpoints', 'fde2', 'fde.entity_id = fde2.entity_id');
+    $query->condition('fde2.endpoints_entity_type', 'user', '=');
+    $query->where("fde2.endpoints_r_index != fde.endpoints_r_index");
+    $query->join('users', 'users_users', 'fde2.endpoints_entity_id = users_users.uid');
+    $query->condition('fde2.endpoints_entity_type', 'user', '=');
+    $query->condition('users_users.uid', $user->uid, '=');
+    $query->condition('users_users.status', 0, '<>');
+    $query->condition('u.status', 0, '<>');
+    $query->orderBy('users_users.name', 'ASC');
+    $lstig = $query->execute()->fetchAll();
+    $result[0] = 'Select User';
+    if (!empty($lstig)) {
+        foreach ($lstig as $value) {
+            $result[$value->uid] = strtoupper($value->name);
+        }
+        return $result;
+    }
+    return $result;
+}
+
+/**
+ * Get subuser job status.
+ */
+function fetch_tasks($user_id) 
+{
+    $q = db_select('field_revision_field_company_subuser_refernce', 'f');
+    $q->fields('f', array('entity_id'));
+    $q->condition('f.field_company_subuser_refernce_target_id', $user_id, '=');
+    $row_count = $q->countQuery()->execute()->fetchField();
+    return $row_count;
+}
